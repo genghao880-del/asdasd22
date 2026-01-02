@@ -1,0 +1,10 @@
+# Minimal wrangler config for this project
+# Replace `account_id` with your Cloudflare account ID if you want to publish to a custom route.
+name = "yx-auto"
+main = "_worker.js"
+compatibility_date = "2026-01-02"
+workers_dev = true
+
+# Optional: Uncomment and fill when publishing to your account route
+# account_id = "your-account-id"
+# route = "example.com/*"
