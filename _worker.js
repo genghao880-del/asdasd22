@@ -391,17 +391,44 @@ function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = 
     const links = [];
     const wsPath = customPath || '/';
 
+    // 支持Unicode的btoa函数
+    const unicodeBtoa = (str) => {
+        return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(match, p1) {
+            return String.fromCharCode('0x' + p1);
+        }));
+    };
+
     list.forEach(item => {
-        let nodeNameBase = item.isp ? item.isp.replace(/\s/g, '_') : (item.name || item.domain || item.ip);
-        if (item.colo && item.colo.trim()) {
-            nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
+        // 验证必要字段是否存在
+        if (!item || !item.ip) {
+            return; // 跳过无效项
         }
-        const safeIP = item.ip.includes(':') ? `[${item.ip}]` : item.ip;
+        
+        // 确保所有需要的字段都存在，否则使用默认值
+        let nodeNameBase = '';
+        if (item.isp && typeof item.isp === 'string') {
+            nodeNameBase = item.isp.replace(/\s/g, '_');
+        } else if (item.name && typeof item.name === 'string') {
+            nodeNameBase = item.name;
+        } else if (item.domain && typeof item.domain === 'string') {
+            nodeNameBase = item.domain;
+        } else {
+            nodeNameBase = item.ip; // 使用IP作为节点名
+        }
+        
+        const colo = (item.colo && typeof item.colo === 'string' && item.colo.trim()) ? `-${item.colo.trim()}` : '';
+        nodeNameBase = `${nodeNameBase}${colo}`;
+        
+        const safeIP = (typeof item.ip === 'string' && item.ip.includes(':')) ? `[${item.ip}]` : item.ip;
         
         let portsToGenerate = [];
         
         if (item.port) {
-            const port = item.port;
+            const port = parseInt(item.port, 10);
+            if (isNaN(port)) {
+                return; // 无效端口，跳过
+            }
+            
             if (CF_HTTPS_PORTS.includes(port)) {
                 portsToGenerate.push({ port: port, tls: true });
             } else if (CF_HTTP_PORTS.includes(port)) {
@@ -416,7 +443,9 @@ function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = 
                 portsToGenerate.push({ port: port, tls: true });
             });
             defaultHttpPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: false });
+                if (!disableNonTLS) {
+                    portsToGenerate.push({ port: port, tls: false });
+                }
             });
         }
 
@@ -439,7 +468,7 @@ function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = 
                 vmessConfig.sni = workerDomain;
                 vmessConfig.fp = "chrome";
             }
-            const vmessBase64 = btoa(JSON.stringify(vmessConfig));
+            const vmessBase64 = unicodeBtoa(JSON.stringify(vmessConfig));
             links.push(`vmess://${vmessBase64}`);
         });
     });
@@ -502,6 +531,7 @@ async function handleSubscriptionRequest(request, user, customDomain, piu, ipv4E
 
     // 原生地址
     const nativeList = [{ ip: workerDomain, isp: '原生地址' }];
+
     await addNodesFromList(nativeList);
 
     // 优选域名
